@@ -2,6 +2,7 @@
 #include <ddraw.h>
 
 #include "wm6_framebuffer.h"
+#include "wm6_viewport.h"
 
 /*
  * The WM6 Professional SDK's legacy ddraw.h omits this public DirectDraw
@@ -376,8 +377,7 @@ static int present_directdraw(void)
     RECT source_rect;
     RECT destination_rect;
     HRESULT status;
-    int destination_width;
-    int destination_height;
+    wm6_viewport viewport;
     int primary_width;
     int primary_height;
     int bytes_per_pixel;
@@ -544,21 +544,11 @@ static int present_directdraw(void)
             L"unavailable\r\n");
         return 0;
     }
-    if (primary_width * g_height <= primary_height * g_width) {
-        destination_width = primary_width;
-        destination_height = g_height * primary_width / g_width;
-    } else {
-        destination_height = primary_height;
-        destination_width = g_width * primary_height / g_height;
-    }
-    destination_rect.left =
-        (primary_width - destination_width) / 2;
-    destination_rect.top =
-        (primary_height - destination_height) / 2;
-    destination_rect.right =
-        destination_rect.left + destination_width;
-    destination_rect.bottom =
-        destination_rect.top + destination_height;
+    viewport = wm6_fit_viewport(primary_width, primary_height, g_width, g_height);
+    destination_rect.left = viewport.x;
+    destination_rect.top = viewport.y;
+    destination_rect.right = viewport.x + viewport.width;
+    destination_rect.bottom = viewport.y + viewport.height;
     source_rect.left = 0;
     source_rect.top = 0;
     source_rect.right = g_width;
@@ -621,10 +611,7 @@ static int present_gdi(void)
     RECT client;
     int client_width;
     int client_height;
-    int destination_width;
-    int destination_height;
-    int offset_x;
-    int offset_y;
+    wm6_viewport viewport;
     int status;
 
     if (!g_window || !g_gdi_pixels ||
@@ -636,26 +623,16 @@ static int present_gdi(void)
     client_height = client.bottom - client.top;
     if (client_width <= 0 || client_height <= 0)
         return 0;
-    if (client_width * g_height <= client_height * g_width) {
-        destination_width = client_width;
-        destination_height =
-            g_height * client_width / g_width;
-    } else {
-        destination_height = client_height;
-        destination_width =
-            g_width * client_height / g_height;
-    }
-    offset_x = (client_width - destination_width) / 2;
-    offset_y = (client_height - destination_height) / 2;
+    viewport = wm6_fit_viewport(client_width, client_height, g_width, g_height);
     dc = GetDC(g_window);
     if (!dc)
         return 0;
     status = StretchDIBits(
         dc,
-        offset_x,
-        offset_y,
-        destination_width,
-        destination_height,
+        viewport.x,
+        viewport.y,
+        viewport.width,
+        viewport.height,
         0,
         0,
         g_width,
@@ -694,6 +671,29 @@ static int present_gdi(void)
 
 int wm6_framebuffer_present(void)
 {
+    RECT client;
+    wm6_viewport viewport;
+    HDC dc;
+    int cleared;
+
+    if (!g_window || !GetClientRect(g_window, &client))
+        return 0;
+    viewport = wm6_fit_viewport(
+        client.right - client.left, client.bottom - client.top, g_width, g_height);
+    if (viewport.width <= 0 || viewport.height <= 0)
+        return 0;
+    /* Clear only the bars; release the GDI DC before touching DirectDraw. */
+    dc = GetDC(g_window);
+    if (!dc)
+        return 0;
+    cleared = ExcludeClipRect(dc, viewport.x, viewport.y,
+        viewport.x + viewport.width, viewport.y + viewport.height) != ERROR;
+    if (cleared)
+        cleared = FillRect(dc, &client, (HBRUSH)GetStockObject(BLACK_BRUSH));
+    ReleaseDC(g_window, dc);
+    if (!cleared)
+        return 0;
+
     if (!g_directdraw_disabled) {
         if (present_directdraw())
             return 1;

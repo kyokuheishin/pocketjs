@@ -48,7 +48,7 @@ QuickJS runtime and 256 KiB stack. Each cycle calls a native `print` function
 from a Promise job. Success shows `QuickJS 6,10,16,26` under the title
 `QuickJS: 100 cycles passed` in a native WM6 message box.
 
-## Hero demo host
+## Cards demo host
 
 `build-runtime.sh` builds `PocketJS.WM6.QuickJS.v3.dll` with a versioned C ABI,
 statically linked libgcc, and the native Rust core produced by
@@ -58,15 +58,18 @@ the real retained Rust `Ui`. It also copies the PAK into QuickJS before mount,
 advances `globalThis.frame` and `ui_tick` at the host cadence, and exposes the
 core's incremental ARGB32 framebuffer.
 
-`build-demo.sh` packages the unmodified real `dist/hero-main.js` output; it no
-longer prepends a JavaScript tree or hand-authored draw-list adapter.
+`build-demo.sh` packages the unmodified real `dist/cards-main.js` output as
+`PocketJS.WM6.Demo.js` and copies its PAK to `PocketJS.WM6.Demo.pak`; it does
+not add a JavaScript host stub or draw-list adapter.
 VS2005 builds `PocketJS.WM6.QuickJS.exe`, deploys the DLL, bundle, and PAK,
-and mounts the Solid application. The native
-screen size after WM6 rotation becomes `ui.__viewport`. Each Rust ARGB32 frame
-is converted to the application-owned RGB565 buffer and presented through a
-locked DirectDraw primary surface. Arrow keys and Enter/Space are mapped to the
-PocketJS directional and Circle button bits. Stylus contacts use the wide
-PocketJS touch encoding so the full 640×480 VGA coordinates are preserved.
+and mounts the Solid Cards application at its fixed 480×272 logical viewport.
+Each Rust ARGB32 frame is converted to the application-owned RGB565 buffer and
+copied to a locked DirectDraw offscreen surface and blitted to the primary surface. The aspect-fit presenter
+centers the viewport with black bars when needed, and stylus contacts use the
+inverse mapping back into the logical viewport. Arrow keys move focus; Enter
+and Space map to Circle and toggle the focused card's details.
+Touch down on a card focuses and activates it once; holding the stylus does not
+repeat the action.
 The ABI suffix is part of the deployed filename so Windows CE cannot satisfy a
 new host from an older process's shared/cached runtime module.
 
@@ -84,19 +87,16 @@ WinCE `SYSTEMTIME`/timezone implementation before shipping a general runtime.
 ## Native integration smoke test
 
 `test-runtime-native.sh` compiles the exact WM6 QuickJS bridge against the
-same Rust core on the development host, evaluates the checked-in Hero bundle,
-installs its PAK, forwards one wide touch frame, and verifies a non-empty
-ARGB32 framebuffer. It defaults to 640×480; optional third and fourth
-arguments select the exact viewport so the 320×240 emulator path can be
-checked as well. This does not replace ARMV4I emulator acceptance, but it
-catches JS/HostOps/core integration regressions before deployment:
+same Rust core on the development host, evaluates the checked-in Cards bundle,
+installs its PAK, verifies animation plus Left/Right/Circle input, and checks
+touch dispatch and aspect-fit coordinate mapping. It also verifies a non-empty
+ARGB32 framebuffer. It defaults to 480×272; optional third and fourth
+arguments select another viewport. This does not replace ARMV4I emulator
+acceptance, which remains pending; no emulator validation is claimed here.
+This host-side check catches JS/HostOps/core integration regressions before
+deployment:
 
 ```sh
 WM6_QUICKJS_SOURCE=/path/to/pinned/quickjs-rs \
   hosts/wm6/quickjs/test-runtime-native.sh
-
-WM6_QUICKJS_SOURCE=/path/to/pinned/quickjs-rs \
-  hosts/wm6/quickjs/test-runtime-native.sh \
-  hosts/wm6/vs2005/prebuilt/PocketJS.WM6.Demo.js \
-  hosts/wm6/vs2005/prebuilt/PocketJS.WM6.Demo.pak 320 240
 ```

@@ -1,9 +1,12 @@
+#include <assert.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <windows.h>
 
 #include "wm6_quickjs_abi.h"
+#include "../../vs2005/src/wm6_viewport.h"
 
 unsigned int wm6_qjs_abi_version(void);
 wm6_qjs_handle wm6_qjs_create(
@@ -119,6 +122,94 @@ static int fail(
     return 1;
 }
 
+static void check_viewport(void)
+{
+    wm6_viewport v;
+    int x, y;
+
+    v = wm6_fit_viewport(320, 240, 480, 272);
+    assert(v.x == 0 && v.y == 29 && v.width == 320 && v.height == 181);
+    x = 160; y = 119;
+    assert(wm6_map_touch(v, 480, 272, 0, &x, &y) && x == 240 && y == 135);
+    x = 160; y = 28;
+    assert(!wm6_map_touch(v, 480, 272, 0, &x, &y));
+    x = 160; y = 210;
+    assert(!wm6_map_touch(v, 480, 272, 0, &x, &y));
+    x = 320; y = 120;
+    assert(!wm6_map_touch(v, 480, 272, 0, &x, &y));
+    x = -20; y = 260;
+    assert(wm6_map_touch(v, 480, 272, 1, &x, &y) && x == 0 && y == 270);
+    v = wm6_fit_viewport(640, 480, 480, 272);
+    assert(v.x == 0 && v.y == 59 && v.width == 640 && v.height == 362);
+    v = wm6_fit_viewport(240, 320, 480, 272);
+    assert(v.x == 0 && v.y == 92 && v.width == 240 && v.height == 136);
+    v = wm6_fit_viewport(960, 272, 480, 272);
+    assert(v.x == 240 && v.y == 0 && v.width == 480 && v.height == 272);
+    v = wm6_fit_viewport(0, 0, 480, 272);
+    x = 0; y = 0;
+    assert(!wm6_map_touch(v, 480, 272, 0, &x, &y));
+}
+
+static const char test_transport[] =
+    "globalThis.__wm6Tree = null; globalThis.__wm6Request = '';"
+    "globalThis.__pocketDevtoolsTransport = {"
+    "send: function(line) { var m = JSON.parse(line);"
+    "if (m.t === 'tree') __wm6Tree = m.root; },"
+    "recv: function() { var q = __wm6Request; __wm6Request = ''; return q; }};"
+    "globalThis.__wm6Find = function(n, name) {"
+    "if (!n) return null; if (n.n === name) return n;"
+    "for (var c of n.k || []) { var found = __wm6Find(c, name);"
+    "if (found) return found; } return null; };"
+    "globalThis.__wm6Texts = function(n) { return n ?"
+    "(n.x || '') + (n.k || []).map(__wm6Texts).join('') : ''; };";
+
+static int check_cards(wm6_qjs_handle runtime, char *message, unsigned int capacity)
+{
+    static const struct { unsigned int buttons; const char *detail; } steps[] = {
+        {0x0020u, ""}, {0x2000u, "Layout"}, {0x2000u, ""},
+        {0x0020u, ""}, {0x2000u, "Motion"}, {0x0020u, "Motion"},
+        {0x2000u, "Input"}, {0x0080u, "Input"},
+        {0x2000u, "Motion"}, {0x2000u, ""}
+    };
+    static const char request[] = "__wm6Request = '{\"t\":\"getTree\"}'";
+    static const char detail[] = "__wm6Texts(__wm6Find(__wm6Tree, 'Detail'))";
+    static const char screen[] = "!!__wm6Find(__wm6Tree, 'CardsScreen')";
+    unsigned int i;
+    unsigned int touch;
+
+    if (wm6_qjs_eval(runtime, screen, sizeof(screen) - 1, message, capacity) ||
+        strcmp(message, "true") != 0)
+        return 0;
+    for (i = 0; i < sizeof(steps) / sizeof(steps[0]); i++) {
+        if (!wm6_qjs_frame(runtime, steps[i].buttons, NULL, 0,
+                NULL, NULL, NULL, NULL, message, capacity) ||
+            wm6_qjs_eval(runtime, request, sizeof(request) - 1, message, capacity) ||
+            !wm6_qjs_frame(runtime, 0, NULL, 0,
+                NULL, NULL, NULL, NULL, message, capacity) ||
+            wm6_qjs_eval(runtime, detail, sizeof(detail) - 1, message, capacity))
+            return 0;
+        if (steps[i].detail[0] ? !strstr(message, steps[i].detail) : message[0] != 0) {
+            fprintf(stderr, "Cards step %u expected detail '%s', got '%s'\n",
+                i, steps[i].detail, message);
+            return 0;
+        }
+    }
+    /* A logical touch on the first card must open Layout exactly once. */
+    touch = 0x80000000u | (110u << 10) | 80u;
+    if (!wm6_qjs_frame(runtime, 0, &touch, 1,
+            NULL, NULL, NULL, NULL, message, capacity) ||
+        !wm6_qjs_frame(runtime, 0, &touch, 1,
+            NULL, NULL, NULL, NULL, message, capacity) ||
+        !wm6_qjs_frame(runtime, 0, NULL, 0,
+            NULL, NULL, NULL, NULL, message, capacity) ||
+        wm6_qjs_eval(runtime, request, sizeof(request) - 1, message, capacity) ||
+        !wm6_qjs_frame(runtime, 0, NULL, 0,
+            NULL, NULL, NULL, NULL, message, capacity) ||
+        wm6_qjs_eval(runtime, detail, sizeof(detail) - 1, message, capacity))
+        return 0;
+    return strstr(message, "Layout") != NULL;
+}
+
 int main(int argument_count, char **arguments)
 {
     unsigned char *bundle;
@@ -132,7 +223,6 @@ int main(int argument_count, char **arguments)
     unsigned int height;
     unsigned int stride;
     unsigned int byte_length;
-    unsigned int touch;
     unsigned int index;
     unsigned int nonzero_alpha;
     unsigned int changed_pixels;
@@ -142,8 +232,9 @@ int main(int argument_count, char **arguments)
     unsigned int expected_length;
     uint64_t hash;
 
-    viewport_width = 640u;
-    viewport_height = 480u;
+    check_viewport();
+    viewport_width = 480u;
+    viewport_height = 272u;
     if (argument_count != 3 && argument_count != 5) {
         fprintf(
             stderr,
@@ -163,7 +254,7 @@ int main(int argument_count, char **arguments)
     bundle = read_file(arguments[1], &bundle_length);
     pak = read_file(arguments[2], &pak_length);
     if (!bundle || !pak)
-        return fail("reading Hero assets", "", NULL, bundle, pak);
+        return fail("reading Cards assets", "", NULL, bundle, pak);
 
     runtime = wm6_qjs_create(
         8u * 1024u * 1024u,
@@ -177,24 +268,24 @@ int main(int argument_count, char **arguments)
     if (wm6_qjs_set_pak(
             runtime, pak, pak_length, message, sizeof(message)) != 0)
         return fail("PAK installation", message, runtime, bundle, pak);
+    if (wm6_qjs_eval(runtime, test_transport, sizeof(test_transport) - 1,
+            message, sizeof(message)) != 0)
+        return fail("test transport", message, runtime, bundle, pak);
     if (wm6_qjs_eval(
             runtime,
             (const char *)bundle,
             bundle_length,
             message,
             sizeof(message)) != 0)
-        return fail("Hero evaluation", message, runtime, bundle, pak);
+        return fail("Cards evaluation", message, runtime, bundle, pak);
     if (wm6_qjs_drain_jobs(runtime, message, sizeof(message)) < 0)
         return fail("initial job drain", message, runtime, bundle, pak);
 
-    touch = 0x80000000u |
-            (((viewport_height / 2u) & 0x3ffu) << 10) |
-            ((viewport_width / 2u) & 0x3ffu);
     pixels = wm6_qjs_frame(
         runtime,
         0,
-        &touch,
-        1,
+        NULL,
+        0,
         &width,
         &height,
         &stride,
@@ -239,6 +330,16 @@ int main(int argument_count, char **arguments)
         return fail(
             "frame contents", "framebuffer is a flat color", runtime, bundle, pak);
     hash = hash_bytes(pixels, byte_length);
+    for (index = 0; index < 60; index++) {
+        pixels = wm6_qjs_frame(runtime, 0, NULL, 0,
+            NULL, NULL, NULL, NULL, message, sizeof(message));
+        if (!pixels)
+            return fail("animation frame", message, runtime, bundle, pak);
+    }
+    if (hash_bytes(pixels, byte_length) == hash)
+        return fail("Cards animation", "pixels did not change", runtime, bundle, pak);
+    if (!check_cards(runtime, message, sizeof(message)))
+        return fail("Cards interaction", message, runtime, bundle, pak);
 
     wm6_qjs_destroy(runtime);
     free(bundle);

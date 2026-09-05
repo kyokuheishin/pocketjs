@@ -9,8 +9,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../../.." && pwd)"
 bundle="${1:-${script_dir}/../vs2005/prebuilt/PocketJS.WM6.Demo.js}"
 pak="${2:-${script_dir}/../vs2005/prebuilt/PocketJS.WM6.Demo.pak}"
-viewport_width="${3:-640}"
-viewport_height="${4:-480}"
+viewport_width="${3:-480}"
+viewport_height="${4:-272}"
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/pocketjs-wm6-native-test.XXXXXX")"
 trap 'rm -rf "$work_dir"' EXIT
 
@@ -24,7 +24,7 @@ for tool in "$cargo" "$cc" git patch; do
 done
 for asset in "$bundle" "$pak"; do
     if [[ ! -f "$asset" ]]; then
-        echo "Required Hero asset not found: ${asset}" >&2
+        echo "Required Cards asset not found: ${asset}" >&2
         exit 2
     fi
 done

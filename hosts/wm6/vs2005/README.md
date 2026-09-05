@@ -9,7 +9,7 @@ This solution contains three native Smart Device applications for the HP iPAQ
   ahead-of-time compilation to portable C. It is the first application UI on
   WM6, but it is not a QuickJS host and cannot load ordinary PocketJS bundles.
 - `PocketJS.WM6.QuickJS` builds a VC8 host and deploys the CeGCC-built QuickJS
-  DLL plus the real `apps/hero` bundle (`JSX at 60 FPS.`). That DLL contains
+  DLL plus the real `apps/cards` bundle (`Feature Cards`). That DLL contains
   the native ARMv4T Rust PocketJS core. QuickJS HostOps call the core's real
   tree, styles, Taffy layout, animation, texture/font, and software-raster
   APIs. Each incremental ARGB32 core frame is converted to RGB565, written to
@@ -18,13 +18,11 @@ This solution contains three native Smart Device applications for the HP iPAQ
   backed by the same software framebuffer. The host requests the absolute
   `DMDO_90` orientation relative to the device's default portrait mode before
   mounting the bundle and restores the previous mode when it exits. The
-  rotated `SM_CXSCREEN` and `SM_CYSCREEN` values determine both the physical
-  output and an integer high-DPI render scale. VGA presents a 320x240 PocketJS
-  framebuffer at 640x480 with a 2x scale, while QVGA remains native 320x240.
-  Other display sizes preserve their aspect ratio rather than scaling a fixed
-  480x272 screenshot. Stylus coordinates are mapped from the physical client
-  to the logical viewport. The window title reports whether landscape rotation
-  succeeded, even without a debugger.
+  rotated `SM_CXSCREEN` and `SM_CYSCREEN` values determine the physical output.
+  The host uses a fixed 480x272 logical viewport, scales it to fit while
+  preserving aspect ratio, centers it with black bars, and maps stylus
+  coordinates back through that transform. The window title reports whether
+  landscape rotation succeeded, even without a debugger.
   Once the top-level window is foreground and sized to the whole rotated
   screen, the host resolves `SHFullScreen` from `aygshell.dll` at runtime to
   hide the taskbar, Start icon, and SIP button. SDKs whose import library omits
@@ -77,17 +75,17 @@ capture; see
    Windows Mobile Classic/Pocket PC devices to this SDK; the similarly named
    Standard SDK is for non-touchscreen Smartphones.
 4. Open `PocketJS.WM6.sln`.
-5. To rebuild the native core and Hero host assets under WSL, run
-   `engine/wm6/build-core.sh`, `tools/build.ts hero-main`,
-   `hosts/wm6/quickjs/build-demo.sh`, and
-   `hosts/wm6/quickjs/build-runtime.sh`. The first and last commands require
-   the tool paths documented in their adjacent READMEs. Known-good ARM/WinCE
-   and JavaScript files are checked in for deployment.
+5. To rebuild the Cards host assets under WSL, run `bun tools/build.ts cards-main`
+   and `bash hosts/wm6/quickjs/build-demo.sh`. Reuse the existing
+   `PocketJS.WM6.QuickJS.v3.dll`; its ABI is unchanged.
 6. Select `Release | Windows Mobile 6 Professional SDK (ARMV4I)`.
 7. Right-click the project you want to run and choose **Set as StartUp
    Project**.
-8. Build and deploy through Visual Studio, or copy the corresponding executable
-   from `bin\Release` to the device.
+8. Rebuild `PocketJS.WM6.QuickJS.exe` in Visual Studio and deploy it with the
+   JavaScript and PAK assets. Copying only the JS/PAK is insufficient because
+   the host viewport, title, and input code are native. The deployed assets are
+   `PocketJS.WM6.QuickJS.v3.dll`, `PocketJS.WM6.Demo.js`, and
+   `PocketJS.WM6.Demo.pak`.
 
 The applications have no MFC, ATL, .NET Compact Framework, or redistributable
 runtime dependency.
@@ -100,7 +98,7 @@ The primary executable is `PocketJS.WM6.QuickJS.exe`. VS2005 stores its remote
 debugger target in a machine-specific ignored `.user` file, so an older
 workspace may still request `PocketJS.WM6.QuickJS.Probe.exe`. The post-build
 step deploys that name as a byte-for-byte compatibility alias of the current
-runtime; it is not the old text-only Cards probe.
+runtime.
 The VS2005 Output window reports the loaded ABI, viewport and asset sizes, the
 first Rust framebuffer geometry, the actual DirectDraw surface format, and a
 rolling measured FPS. Any runtime, framebuffer-copy, or DirectDraw failure
@@ -116,6 +114,18 @@ has been copied. Later paint requests finish and release their GDI paint DC
 before presenting. Windows CE drivers that reject direct primary-surface
 locking are handled through offscreen-surface Blt, with `StretchDIBits` as a
 last-resort presenter.
+
+## QuickJS Cards controls
+
+Left and Right move focus between cards. Enter or Space presses Circle and
+toggles the focused card's detail panel. A touch down on a card focuses and
+activates it once; holding the stylus does not repeat. Touches starting in the
+black bars are ignored.
+
+Emulator acceptance is pending: rebuild the host, confirm the complete three-card
+layout and moving background, exercise keys and stylus, and check that Escape
+restores the original orientation. The startup log should report
+`viewport=480x272` and `Rust frame 480x272 stride=1920 bytes=522240`.
 
 ## Pocket Vapor Todo controls
 

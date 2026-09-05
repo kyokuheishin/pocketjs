@@ -3,6 +3,7 @@
 
 #include "wm6_quickjs_abi.h"
 #include "wm6_framebuffer.h"
+#include "wm6_viewport.h"
 
 static int append_file_name(WCHAR *path, unsigned int capacity,
                             const WCHAR *name)
@@ -90,8 +91,6 @@ static unsigned int g_buttons;
 static unsigned int g_pressed_buttons;
 static int g_viewport_width;
 static int g_viewport_height;
-static int g_display_width;
-static int g_display_height;
 static int g_touch_active;
 static int g_touch_x;
 static int g_touch_y;
@@ -246,27 +245,26 @@ static unsigned int button_for_key(WPARAM key)
     return 0;
 }
 
-static void update_touch_position(LPARAM position)
+static int update_touch_position(HWND window, LPARAM position)
 {
+    RECT client;
+    wm6_viewport viewport;
     int x;
     int y;
 
+    if (!GetClientRect(window, &client))
+        return 0;
+    viewport = wm6_fit_viewport(
+        client.right - client.left, client.bottom - client.top,
+        g_viewport_width, g_viewport_height);
     x = (short)LOWORD(position);
     y = (short)HIWORD(position);
-    if (x < 0)
-        x = 0;
-    else if (x >= g_display_width)
-        x = g_display_width - 1;
-    if (y < 0)
-        y = 0;
-    else if (y >= g_display_height)
-        y = g_display_height - 1;
-    if (g_display_width > 0)
-        x = x * g_viewport_width / g_display_width;
-    if (g_display_height > 0)
-        y = y * g_viewport_height / g_display_height;
+    if (!wm6_map_touch(viewport, g_viewport_width, g_viewport_height,
+                       g_touch_active, &x, &y))
+        return 0;
     g_touch_x = x;
     g_touch_y = y;
+    return 1;
 }
 
 static int stop_frame_rendering(const WCHAR *message)
@@ -520,18 +518,19 @@ static LRESULT CALLBACK DemoWindowProc(HWND window, UINT message,
         render_core_frame();
         return 0;
     case WM_LBUTTONDOWN:
-        update_touch_position(lparam);
+        if (!update_touch_position(window, lparam))
+            return 0;
         g_touch_active = 1;
         SetCapture(window);
         render_core_frame();
         return 0;
     case WM_MOUSEMOVE:
         if (g_touch_active)
-            update_touch_position(lparam);
+            update_touch_position(window, lparam);
         return 0;
     case WM_LBUTTONUP:
         if (g_touch_active) {
-            update_touch_position(lparam);
+            update_touch_position(window, lparam);
             render_core_frame();
             g_touch_active = 0;
             ReleaseCapture();
@@ -606,9 +605,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR command, int s
     HWND window;
     MSG message_loop;
     int rotation_ready;
-    int render_scale;
-    int width_scale;
-    int height_scale;
     int status;
     unsigned int loaded_abi;
     int display_height;
@@ -671,16 +667,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR command, int s
     rotation_ready = rotate_display_90();
     display_width = GetSystemMetrics(SM_CXSCREEN);
     display_height = GetSystemMetrics(SM_CYSCREEN);
-    width_scale = display_width / 320;
-    height_scale = display_height / 240;
-    render_scale =
-        width_scale < height_scale ? width_scale : height_scale;
-    if (render_scale < 1)
-        render_scale = 1;
-    viewport_width = display_width / render_scale;
-    viewport_height = display_height / render_scale;
-    g_display_width = display_width;
-    g_display_height = display_height;
+    viewport_width = 480;
+    viewport_height = 272;
     g_viewport_width = viewport_width;
     g_viewport_height = viewport_height;
 
@@ -758,14 +746,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR command, int s
     wsprintfW(
         message,
         L"PocketJS WM6 receipt: ABI v%lu, display=%lux%lu, "
-        L"viewport=%lux%lu, scale=%lux, "
+        L"viewport=%lux%lu, aspect-fit, "
         L"bundle=%lu bytes, pak=%lu bytes\r\n",
         (DWORD)WM6_QJS_ABI_VERSION,
         (DWORD)display_width,
         (DWORD)display_height,
         (DWORD)viewport_width,
         (DWORD)viewport_height,
-        (DWORD)render_scale,
         (DWORD)bundle_length,
         (DWORD)pak_length);
     OutputDebugString(message);
@@ -785,8 +772,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous, LPWSTR command, int s
     }
     window = CreateWindow(class_name,
                           rotation_ready
-                              ? L"PocketJS Hero Demo [landscape]"
-                              : L"PocketJS Hero Demo [rotation unavailable]",
+                              ? L"PocketJS Cards Demo [landscape]"
+                              : L"PocketJS Cards Demo [rotation unavailable]",
                           WS_VISIBLE, 0, 0,
                           display_width,
                           display_height,
