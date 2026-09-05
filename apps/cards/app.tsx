@@ -12,6 +12,8 @@
 import { createSignal, onMount, Show } from "solid-js";
 import { Text, View, type NodeMirror } from "@pocketjs/framework/components";
 import { animate, spring } from "@pocketjs/framework/animation";
+import { onFrame } from "@pocketjs/framework/lifecycle";
+import { touches, hitFocusable, focusNode } from "@pocketjs/framework/input";
 
 interface Card {
   title: string;
@@ -78,6 +80,18 @@ function Detail(props: { card: Card }) {
 export default function Cards() {
   const [open, setOpen] = createSignal(-1);
   const selected = () => (open() >= 0 ? CARDS[open()] : undefined);
+  let touching = false;
+  onFrame(() => {
+    const contact = touches()[0];
+    if (contact && !touching) {
+      const card = hitFocusable(contact.x, contact.y);
+      if (card) {
+        focusNode(card);
+        card.onPress?.();
+      }
+    }
+    touching = !!contact;
+  });
 
   let streakA: NodeMirror | undefined;
   let streakB: NodeMirror | undefined;

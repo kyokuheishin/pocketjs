@@ -1,4 +1,4 @@
-/* PocketJS WM6 native Rust core + real apps/hero bundle. */
+/* PocketJS WM6 native Rust core + real apps/cards bundle. */
 (() => {
   // node_modules/solid-js/dist/solid.js
   var sharedConfig = {
@@ -78,14 +78,14 @@
       observerSlots: null,
       comparator: options.equals || undefined
     };
-    const setter = (value2) => {
-      if (typeof value2 === "function") {
+    const setter = (value) => {
+      if (typeof value === "function") {
         if (Transition && Transition.running && Transition.sources.has(s))
-          value2 = value2(s.tValue);
+          value = value(s.tValue);
         else
-          value2 = value2(s.value);
+          value = value(s.value);
       }
-      return writeSignal(s, value2);
+      return writeSignal(s, value);
     };
     return [readSignal.bind(s), setter];
   }
@@ -443,9 +443,9 @@
         const disposed = Transition.disposed;
         Effects.push.apply(Effects, Transition.effects);
         res = Transition.resolve;
-        for (const e2 of Effects) {
-          "tState" in e2 && (e2.state = e2.tState);
-          delete e2.tState;
+        for (const e of Effects) {
+          "tState" in e && (e.state = e.tState);
+          delete e.tState;
         }
         Transition = null;
         runUpdates(() => {
@@ -731,8 +731,8 @@
       if (!source)
         continue;
       const sourceKeys = Object.getOwnPropertyNames(source);
-      for (let i2 = sourceKeys.length - 1;i2 >= 0; i2--) {
-        const key = sourceKeys[i2];
+      for (let i = sourceKeys.length - 1;i >= 0; i--) {
+        const key = sourceKeys[i];
         if (key === "__proto__" || key === "constructor")
           continue;
         const desc = Object.getOwnPropertyDescriptor(source, key);
@@ -743,12 +743,12 @@
             get: resolveSources.bind(sourcesMap[key] = [desc.get.bind(source)])
           } : desc.value !== undefined ? desc : undefined;
         } else {
-          const sources2 = sourcesMap[key];
-          if (sources2) {
+          const sources = sourcesMap[key];
+          if (sources) {
             if (desc.get)
-              sources2.push(desc.get.bind(source));
+              sources.push(desc.get.bind(source));
             else if (desc.value !== undefined)
-              sources2.push(() => desc.value);
+              sources.push(() => desc.value);
           }
         }
       }
@@ -1541,17 +1541,6 @@
     callbacks.add(callback);
     onCleanup(() => callbacks.delete(callback));
   }
-  function createSpriteAnimation(frames, opts = {}) {
-    if (frames.length === 0) {
-      throw new Error("PocketJS: createSpriteAnimation() requires at least one frame");
-    }
-    const frameStep = Math.max(1, Math.floor(opts.frameStep ?? 1));
-    const [frame2, setFrame] = createSignal(0);
-    onFrame(() => {
-      setFrame((frame2() + 1) % (frames.length * frameStep));
-    });
-    return () => frames[Math.floor(frame2() / frameStep) % frames.length];
-  }
 
   // framework/src/pak.ts
   var map = null;
@@ -1976,6 +1965,12 @@
     }
     return null;
   }
+  function hitFocusable(x, y) {
+    const ops = getOps();
+    if (!ops.hitTest)
+      return null;
+    return cursorTarget(findMirror(hitRoot ?? root, ops.hitTest(x, y)));
+  }
   function cursorFrame(buttons, pressed, released) {
     const c = cursor;
     const ops = getOps();
@@ -2253,11 +2248,11 @@
       isConnected: {
         configurable: true,
         get() {
-          let current2 = node;
-          while (current2) {
-            if (current2 === rootMirror)
+          let current = node;
+          while (current) {
+            if (current === rootMirror)
               return true;
-            current2 = current2.parent;
+            current = current.parent;
           }
           return false;
         }
@@ -2276,10 +2271,10 @@
         removeNode(node, child);
         return child;
       },
-      replaceChild(next, current2) {
-        insertNode(node, next, current2);
-        removeNode(node, current2);
-        return current2;
+      replaceChild(next, current) {
+        insertNode(node, next, current);
+        removeNode(node, current);
+        return current;
       },
       cloneNode(deep = false) {
         return cloneNativeNode(node, !!deep);
@@ -2305,11 +2300,11 @@
         return node.children.length > 0;
       },
       contains(other) {
-        let current2 = other ?? null;
-        while (current2) {
-          if (current2 === node)
+        let current = other ?? null;
+        while (current) {
+          if (current === node)
             return true;
-          current2 = current2.parent;
+          current = current.parent;
         }
         return false;
       },
@@ -2682,11 +2677,16 @@
     }
     return getOps().animate(nodeId(node), propId, encodePropValue(prop, to), opts.dur ?? 200, easing, opts.delay ?? 0);
   }
+  function spring(node, prop, to, preset = "default") {
+    const propId = animatablePropId(prop);
+    const easing = preset === "bouncy" ? ENUMS.Easing.SpringBouncy : ENUMS.Easing.Spring;
+    return getOps().animate(nodeId(node), propId, encodePropValue(prop, to), 0, easing, 0);
+  }
 
   // framework/src/overlay.ts
   var overlayRoot = null;
-  function setOverlayRoot(root2) {
-    overlayRoot = root2;
+  function setOverlayRoot(root) {
+    overlayRoot = root;
   }
   // framework/src/primitives.ts
   function callRef(ref, node) {
@@ -2709,15 +2709,12 @@
   function Text(props) {
     return primitive("text", props);
   }
-  function Image(props) {
-    return primitive("image", props);
-  }
   // framework/src/hot.ts
   var lastText = new WeakMap;
   var lastProp = new WeakMap;
 
   // framework/src/platform.ts
-  var features = {} !== null ? Object.freeze({
+  var features = typeof {} === "object" && {} !== null ? Object.freeze({
     ...{}
   }) : Object.freeze({});
   var platform = Object.freeze({
@@ -2728,6 +2725,224 @@
 
   // framework/src/tiles.ts
   var parsed = new Map;
+  // framework/src/touch.ts
+  var LEGACY_COORD_BITS = 9;
+  var LEGACY_COORD_MASK = (1 << LEGACY_COORD_BITS) - 1;
+  var LEGACY_ID_SHIFT = LEGACY_COORD_BITS * 2;
+  var WIDE_MARKER = 2147483648;
+  var WIDE_COORD_BITS = 10;
+  var WIDE_COORD_MASK = (1 << WIDE_COORD_BITS) - 1;
+  var WIDE_ID_SHIFT = WIDE_COORD_BITS * 2;
+  var EMPTY = Object.freeze([]);
+  var snapshot = EMPTY;
+  function __setTouches(packed) {
+    if (!packed || packed.length === 0) {
+      snapshot = EMPTY;
+      return;
+    }
+    snapshot = Object.freeze(packed.slice(0, 8).map((value) => {
+      const wide = (value & WIDE_MARKER) !== 0;
+      const coordBits = wide ? WIDE_COORD_BITS : LEGACY_COORD_BITS;
+      const coordMask = wide ? WIDE_COORD_MASK : LEGACY_COORD_MASK;
+      const idShift = wide ? WIDE_ID_SHIFT : LEGACY_ID_SHIFT;
+      return Object.freeze({
+        id: value >>> idShift & 255,
+        x: value & coordMask,
+        y: value >>> coordBits & coordMask
+      });
+    }));
+  }
+  function touches() {
+    return snapshot;
+  }
+  function __resetTouches() {
+    snapshot = EMPTY;
+  }
+  // apps/cards/app.tsx
+  var CARDS = [{
+    title: "Layout",
+    caption: "Flexbox via Taffy",
+    detail: "Rows, columns, gaps and insets — solved natively in Rust.",
+    cls: "flex-col gap-1 p-3 w-[136] rounded-xl shadow-md overflow-hidden bg-white border-slate-200 translate-y-1 focus:bg-blue-50 focus:border-blue-500 focus:translate-y-0 transition-all duration-150 ease-out",
+    strip: "h-1 w-full rounded-sm bg-gradient-to-r from-blue-500 to-blue-600",
+    bar: "w-1 h-7 bg-blue-500"
+  }, {
+    title: "Motion",
+    caption: "Springs and tweens",
+    detail: "Fixed-dt springs and tweens tick natively at 60 FPS.",
+    cls: "flex-col gap-1 p-3 w-[136] rounded-xl shadow-md overflow-hidden bg-white border-slate-200 translate-y-1 focus:bg-emerald-50 focus:border-emerald-500 focus:translate-y-0 transition-all duration-150 ease-out",
+    strip: "h-1 w-full rounded-sm bg-gradient-to-r from-emerald-500 to-emerald-600",
+    bar: "w-1 h-7 bg-emerald-500"
+  }, {
+    title: "Input",
+    caption: "D-pad and focus",
+    detail: "Native focus variants respond before JS even wakes up.",
+    cls: "flex-col gap-1 p-3 w-[136] rounded-xl shadow-md overflow-hidden bg-white border-slate-200 translate-y-1 focus:bg-amber-50 focus:border-amber-500 focus:translate-y-0 transition-all duration-150 ease-out",
+    strip: "h-1 w-full rounded-sm bg-gradient-to-r from-amber-500 to-amber-600",
+    bar: "w-1 h-7 bg-amber-500"
+  }];
+  function Detail(props) {
+    let el;
+    onMount(() => {
+      if (el)
+        spring(el, "translateY", 0);
+    });
+    return createComponent2(View, {
+      ref(r$) {
+        var _ref$ = el;
+        typeof _ref$ === "function" ? _ref$(r$) : el = r$;
+      },
+      debugName: "Detail",
+      style: {
+        translateY: 22
+      },
+      class: "flex-row items-center gap-3 p-3 rounded-xl shadow-md bg-white border-slate-200",
+      get children() {
+        return [createComponent2(View, {
+          get ["class"]() {
+            return props.card.bar;
+          }
+        }), createComponent2(View, {
+          class: "flex-col gap-1",
+          get children() {
+            return [createComponent2(Text, {
+              class: "text-sm text-slate-950 font-bold",
+              get children() {
+                return props.card.title;
+              }
+            }), createComponent2(Text, {
+              class: "text-xs text-slate-600",
+              get children() {
+                return props.card.detail;
+              }
+            })];
+          }
+        })];
+      }
+    });
+  }
+  function Cards() {
+    const [open, setOpen] = createSignal(-1);
+    const selected = () => open() >= 0 ? CARDS[open()] : undefined;
+    let touching = false;
+    onFrame(() => {
+      const contact = touches()[0];
+      if (contact && !touching) {
+        const card = hitFocusable(contact.x, contact.y);
+        if (card) {
+          focusNode(card);
+          card.onPress?.();
+        }
+      }
+      touching = !!contact;
+    });
+    let streakA;
+    let streakB;
+    onMount(() => {
+      if (streakA)
+        animate(streakA, "translateX", 300, {
+          dur: 20000,
+          easing: "linear"
+        });
+      if (streakB)
+        animate(streakB, "translateX", -260, {
+          dur: 26000,
+          easing: "linear"
+        });
+    });
+    return createComponent2(View, {
+      debugName: "CardsScreen",
+      class: "relative flex-col w-full h-full p-4 gap-3 bg-slate-50 overflow-hidden",
+      get children() {
+        return [createComponent2(View, {
+          ref(r$) {
+            var _ref$2 = streakA;
+            typeof _ref$2 === "function" ? _ref$2(r$) : streakA = r$;
+          },
+          class: "absolute left-0 top-[58] w-64 h-1 rounded-full opacity-50 bg-gradient-to-r from-blue-300 to-transparent",
+          style: {
+            translateX: 24
+          }
+        }), createComponent2(View, {
+          ref(r$) {
+            var _ref$3 = streakB;
+            typeof _ref$3 === "function" ? _ref$3(r$) : streakB = r$;
+          },
+          class: "absolute left-[210] top-[246] w-56 h-1 rounded-full opacity-40 bg-gradient-to-l from-cyan-300 to-transparent",
+          style: {
+            translateX: 0
+          }
+        }), createComponent2(View, {
+          debugName: "Header",
+          class: "flex-row items-end justify-between",
+          get children() {
+            return [createComponent2(View, {
+              class: "flex-col",
+              get children() {
+                return [createComponent2(Text, {
+                  class: "text-xs text-blue-600 tracking-wide",
+                  children: "POCKETJS SHOWCASE"
+                }), createComponent2(Text, {
+                  class: "text-2xl text-slate-950 font-bold",
+                  children: "Feature Cards"
+                })];
+              }
+            }), createComponent2(Text, {
+              class: "text-xs text-slate-500",
+              children: "3 MODULES"
+            })];
+          }
+        }), createComponent2(View, {
+          debugName: "CardRow",
+          class: "flex-row gap-3",
+          get children() {
+            return CARDS.map((card, i) => createComponent2(View, {
+              get ["class"]() {
+                return card.cls;
+              },
+              focusable: true,
+              onPress: () => setOpen(open() === i ? -1 : i),
+              get children() {
+                return [createComponent2(View, {
+                  get ["class"]() {
+                    return card.strip;
+                  }
+                }), createComponent2(Text, {
+                  class: "text-sm text-slate-950 font-bold",
+                  get children() {
+                    return card.title;
+                  }
+                }), createComponent2(Text, {
+                  class: "text-xs text-slate-600",
+                  get children() {
+                    return card.caption;
+                  }
+                })];
+              }
+            }));
+          }
+        }), createComponent2(View, {
+          debugName: "DetailPane",
+          class: "grow flex-col",
+          get children() {
+            return createComponent2(Show, {
+              get when() {
+                return selected();
+              },
+              keyed: true,
+              children: (card) => createComponent2(Detail, {
+                card
+              })
+            });
+          }
+        }), createComponent2(Text, {
+          class: "text-xs text-slate-500",
+          children: "LEFT / RIGHT move focus · CIRCLE toggle details"
+        })];
+      }
+    });
+  }
+
   // framework/src/devtools.ts
   var TAPE_CAP = 36000;
   var TREE_THROTTLE = 30;
@@ -3126,8 +3341,8 @@
     }
   }
   function forEachTreeChild(node, visit) {
-    const children2 = Array.isArray(node.children) ? node.children : [];
-    for (const child of children2)
+    const children = Array.isArray(node.children) ? node.children : [];
+    for (const child of children)
       forEachTreeMirror(child, visit);
   }
   function serializeNode(node) {
@@ -3205,8 +3420,8 @@
     }
     if (v instanceof Error)
       return `${v.name}: ${v.message}`;
-    const entries2 = Object.entries(v).slice(0, 20);
-    const body = entries2.map(([k, x]) => `${k}: ${fmt(x, depth + 1)}`).join(", ");
+    const entries = Object.entries(v).slice(0, 20);
+    const body = entries.map(([k, x]) => `${k}: ${fmt(x, depth + 1)}`).join(", ");
     return `{${body}}`;
   }
   function clip(s) {
@@ -3263,37 +3478,6 @@
     return alias === ALIAS_AMBIGUOUS ? undefined : alias;
   }
 
-  // framework/src/touch.ts
-  var LEGACY_COORD_BITS = 9;
-  var LEGACY_COORD_MASK = (1 << LEGACY_COORD_BITS) - 1;
-  var LEGACY_ID_SHIFT = LEGACY_COORD_BITS * 2;
-  var WIDE_MARKER = 2147483648;
-  var WIDE_COORD_BITS = 10;
-  var WIDE_COORD_MASK = (1 << WIDE_COORD_BITS) - 1;
-  var WIDE_ID_SHIFT = WIDE_COORD_BITS * 2;
-  var EMPTY = Object.freeze([]);
-  var snapshot = EMPTY;
-  function __setTouches(packed) {
-    if (!packed || packed.length === 0) {
-      snapshot = EMPTY;
-      return;
-    }
-    snapshot = Object.freeze(packed.slice(0, 8).map((value) => {
-      const wide = (value & WIDE_MARKER) !== 0;
-      const coordBits = wide ? WIDE_COORD_BITS : LEGACY_COORD_BITS;
-      const coordMask = wide ? WIDE_COORD_MASK : LEGACY_COORD_MASK;
-      const idShift = wide ? WIDE_ID_SHIFT : LEGACY_ID_SHIFT;
-      return Object.freeze({
-        id: value >>> idShift & 255,
-        x: value & coordMask,
-        y: value >>> coordBits & coordMask
-      });
-    }));
-  }
-  function __resetTouches() {
-    snapshot = EMPTY;
-  }
-
   // framework/src/effects.ts
   var nextId = 1;
   var pending = new Map;
@@ -3332,29 +3516,29 @@
 
   // framework/src/styles.generated.ts
   var STYLE_IDS = {
-    "flex-col items-end": 0,
-    "text-xs text-slate-500 tracking-wide": 1,
-    "w-full h-full flex-col justify-between p-5 bg-gradient-to-b from-slate-50 to-slate-100": 2,
-    "flex-row flex-wrap items-center justify-between": 3,
-    "flex-row items-center gap-3": 4,
-    "w-10 h-10 rounded-lg shadow": 5,
-    "flex-col": 6,
-    "text-base text-slate-950 font-bold tracking-wide": 7,
-    "flex-row gap-4": 8,
-    "text-lg text-emerald-600 font-bold": 9,
-    "text-lg text-blue-600 font-bold": 10,
-    "text-lg text-amber-600 font-bold": 11,
-    "flex-col gap-2": 12,
-    "text-xs text-blue-600 tracking-wide": 13,
-    "text-4xl text-slate-950 font-bold": 14,
-    "w-10 h-10": 15,
-    "h-1 w-0 rounded-full shadow bg-gradient-to-r from-blue-500 to-cyan-500": 16,
-    "flex-row flex-wrap gap-1": 17,
-    "text-sm text-slate-600": 18,
-    "flex-row flex-wrap items-center gap-4": 19,
-    "px-4 py-2 rounded-xl shadow-md bg-blue-600 border-blue-500 focus:bg-blue-500 active:bg-blue-700 transition-colors duration-150": 20,
-    "text-base text-white font-bold": 21,
-    "text-sm text-emerald-600": 22,
+    "flex-col gap-1 p-3 w-[136] rounded-xl shadow-md overflow-hidden bg-white border-slate-200 translate-y-1 focus:bg-blue-50 focus:border-blue-500 focus:translate-y-0 transition-all duration-150 ease-out": 0,
+    "h-1 w-full rounded-sm bg-gradient-to-r from-blue-500 to-blue-600": 1,
+    "w-1 h-7 bg-blue-500": 2,
+    "flex-col gap-1 p-3 w-[136] rounded-xl shadow-md overflow-hidden bg-white border-slate-200 translate-y-1 focus:bg-emerald-50 focus:border-emerald-500 focus:translate-y-0 transition-all duration-150 ease-out": 3,
+    "h-1 w-full rounded-sm bg-gradient-to-r from-emerald-500 to-emerald-600": 4,
+    "w-1 h-7 bg-emerald-500": 5,
+    "flex-col gap-1 p-3 w-[136] rounded-xl shadow-md overflow-hidden bg-white border-slate-200 translate-y-1 focus:bg-amber-50 focus:border-amber-500 focus:translate-y-0 transition-all duration-150 ease-out": 6,
+    "h-1 w-full rounded-sm bg-gradient-to-r from-amber-500 to-amber-600": 7,
+    "w-1 h-7 bg-amber-500": 8,
+    "flex-row items-center gap-3 p-3 rounded-xl shadow-md bg-white border-slate-200": 9,
+    "flex-col gap-1": 10,
+    "text-sm text-slate-950 font-bold": 11,
+    "text-xs text-slate-600": 12,
+    "relative flex-col w-full h-full p-4 gap-3 bg-slate-50 overflow-hidden": 13,
+    "absolute left-0 top-[58] w-64 h-1 rounded-full opacity-50 bg-gradient-to-r from-blue-300 to-transparent": 14,
+    "absolute left-[210] top-[246] w-56 h-1 rounded-full opacity-40 bg-gradient-to-l from-cyan-300 to-transparent": 15,
+    "flex-row items-end justify-between": 16,
+    "flex-col": 17,
+    "text-xs text-blue-600 tracking-wide": 18,
+    "text-2xl text-slate-950 font-bold": 19,
+    "text-xs text-slate-500": 20,
+    "flex-row gap-3": 21,
+    "grow flex-col": 22,
     "relative flex-col w-full h-full bg-slate-50 overflow-hidden": 23,
     "absolute inset-0 z-50 flex-col items-center justify-center": 24,
     "absolute inset-0 bg-slate-950": 25,
@@ -3374,9 +3558,6 @@
   var FONT_PREFIX = "ui:font.";
   var IMG_PREFIX = "ui:img.";
   var SPRITE_PREFIX = "ui:sprite.";
-  function frameworkName() {
-    return "Solid";
-  }
   function globalOps() {
     return globalThis.ui;
   }
@@ -3490,7 +3671,7 @@
       height: layerH,
       overflow: ENUMS.Overflow.Hidden
     });
-    const overlayRoot2 = createLayer({
+    const overlayRoot = createLayer({
       width: layerW,
       height: layerH,
       posType: ENUMS.PosType.Absolute,
@@ -3501,10 +3682,10 @@
       zIndex: 1000
     });
     insertNode(rootMirror, appRoot);
-    insertNode(rootMirror, overlayRoot2);
-    setOverlayRoot(overlayRoot2);
+    insertNode(rootMirror, overlayRoot);
+    setOverlayRoot(overlayRoot);
     appLayer = appRoot;
-    overlayLayer = overlayRoot2;
+    overlayLayer = overlayRoot;
     setInputRoot(appRoot);
     setHitRoot(rootMirror);
     resetFrameHooks();
@@ -3555,170 +3736,6 @@
     return dispose;
   }
 
-  // apps/hero/app.tsx
-  var SPINNER_FRAME_STEP = 3;
-  var SPINNER_FRAMES = ["spinner-00.svg", "spinner-01.svg", "spinner-02.svg", "spinner-03.svg", "spinner-04.svg", "spinner-05.svg", "spinner-06.svg", "spinner-07.svg"];
-  function Stat(props) {
-    return createComponent2(View, {
-      class: "flex-col items-end",
-      get children() {
-        return [createComponent2(Text, {
-          get ["class"]() {
-            return props.cls;
-          },
-          get children() {
-            return props.value;
-          }
-        }), createComponent2(Text, {
-          class: "text-xs text-slate-500 tracking-wide",
-          get children() {
-            return props.label;
-          }
-        })];
-      }
-    });
-  }
-  function Hero() {
-    const [count, setCount] = createSignal(0);
-    const spinnerSrc = createSpriteAnimation(SPINNER_FRAMES, {
-      frameStep: SPINNER_FRAME_STEP
-    });
-    let underline;
-    onMount(() => {
-      if (underline)
-        animate(underline, "width", 210, {
-          dur: 700,
-          easing: "out",
-          delay: 150
-        });
-    });
-    return createComponent2(View, {
-      debugName: "HeroScreen",
-      class: "w-full h-full flex-col justify-between p-5 bg-gradient-to-b from-slate-50 to-slate-100",
-      get children() {
-        return [createComponent2(View, {
-          debugName: "Header",
-          class: "flex-row flex-wrap items-center justify-between",
-          get children() {
-            return [createComponent2(View, {
-              class: "flex-row items-center gap-3",
-              get children() {
-                return [createComponent2(Image, {
-                  class: "w-10 h-10 rounded-lg shadow",
-                  src: "logo.png"
-                }), createComponent2(View, {
-                  class: "flex-col",
-                  get children() {
-                    return [createComponent2(Text, {
-                      class: "text-base text-slate-950 font-bold tracking-wide",
-                      children: "PocketJS"
-                    }), createComponent2(Text, {
-                      class: "text-xs text-slate-500 tracking-wide",
-                      get children() {
-                        return [memo2(() => frameworkName()), " + RUST + SCEGU"];
-                      }
-                    })];
-                  }
-                })];
-              }
-            }), createComponent2(View, {
-              class: "flex-row gap-4",
-              get children() {
-                return [createComponent2(Stat, {
-                  label: "FPS",
-                  value: "60",
-                  cls: "text-lg text-emerald-600 font-bold"
-                }), createComponent2(Stat, {
-                  label: "NODES",
-                  value: "42",
-                  cls: "text-lg text-blue-600 font-bold"
-                }), createComponent2(Stat, {
-                  label: "DRAWS",
-                  value: "9",
-                  cls: "text-lg text-amber-600 font-bold"
-                })];
-              }
-            })];
-          }
-        }), createComponent2(View, {
-          class: "flex-col gap-2",
-          get children() {
-            return [createComponent2(Text, {
-              class: "text-xs text-blue-600 tracking-wide",
-              children: "ONE RUST CORE · ONE JSX APP"
-            }), createComponent2(View, {
-              class: "flex-row flex-wrap items-center justify-between",
-              get children() {
-                return [createComponent2(Text, {
-                  class: "text-4xl text-slate-950 font-bold",
-                  children: "JSX at 60 FPS."
-                }), createComponent2(Image, {
-                  class: "w-10 h-10",
-                  get src() {
-                    return spinnerSrc();
-                  }
-                })];
-              }
-            }), createComponent2(View, {
-              ref(r$) {
-                var _ref$ = underline;
-                typeof _ref$ === "function" ? _ref$(r$) : underline = r$;
-              },
-              class: "h-1 w-0 rounded-full shadow bg-gradient-to-r from-blue-500 to-cyan-500",
-              get style() {
-                return {
-                  translateX: count() * 2
-                };
-              }
-            }), createComponent2(View, {
-              debugName: "Description",
-              class: "flex-row flex-wrap gap-1",
-              get children() {
-                return [createComponent2(Text, {
-                  class: "text-sm text-slate-600",
-                  children: "Flexbox, springs and baked type —"
-                }), createComponent2(Text, {
-                  class: "text-sm text-slate-600",
-                  children: "running on a 2005 handheld."
-                })];
-              }
-            })];
-          }
-        }), createComponent2(View, {
-          class: "flex-row flex-wrap items-center gap-4",
-          get children() {
-            return [createComponent2(View, {
-              class: "px-4 py-2 rounded-xl shadow-md bg-blue-600 border-blue-500 focus:bg-blue-500 active:bg-blue-700 transition-colors duration-150",
-              focusable: true,
-              onPress: () => setCount(count() + 1),
-              get children() {
-                return createComponent2(Text, {
-                  class: "text-base text-white font-bold",
-                  children: "Press Circle"
-                });
-              }
-            }), createComponent2(Text, {
-              class: "text-sm text-slate-600",
-              get children() {
-                return ["Count: ", memo2(() => count())];
-              }
-            }), createComponent2(Show, {
-              get when() {
-                return count() > 3;
-              },
-              get children() {
-                return createComponent2(Text, {
-                  class: "text-sm text-emerald-600",
-                  children: "Reactive on real hardware."
-                });
-              }
-            })];
-          }
-        })];
-      }
-    });
-  }
-
-  // apps/hero/main.tsx
-  mount(() => createComponent2(Hero, {}));
+  // apps/cards/main.tsx
+  mount(() => createComponent2(Cards, {}));
 })();
